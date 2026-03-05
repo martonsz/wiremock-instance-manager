@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>WireMock Instance</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        h1, h2 { color: #333; }
+        .section { background:#f9f9f9; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:20px; }
+        .btn { padding:7px 16px; border:none; border-radius:4px; cursor:pointer; font-size:0.9em; margin-right:6px; }
+        .btn-primary { background:#007bff; color:#fff; }
+        .btn-success { background:#28a745; color:#fff; }
+        .btn-warning { background:#ffc107; color:#333; }
+        .btn-danger { background:#dc3545; color:#fff; }
+        .btn-secondary { background:#6c757d; color:#fff; }
+        label { display:block; margin-top:10px; font-weight:bold; }
+        input[type=text], input[type=number], select { width:100%; padding:6px; box-sizing:border-box; margin-top:4px; border:1px solid #ccc; border-radius:4px; }
+        .option-row { display:flex; gap:8px; margin-top:6px; align-items:center; }
+        .option-row select, .option-row input { flex:1; margin-top:0; }
+        .option-row button { flex:none; }
+        #toast-container { position:fixed; bottom:20px; right:20px; z-index:9999; }
+        .toast { padding:10px 18px; margin-top:8px; border-radius:4px; color:#fff; font-size:0.9em; }
+        .toast-success { background:#28a745; }
+        .toast-error { background:#dc3545; }
+        a { color:#007bff; }
+        .back { margin-bottom:16px; display:block; }
+        footer { margin-top: 40px; text-align: center; font-size: 0.8em; color: #aaa; }
+    </style>
+</head>
+<body>
+<a class="back" href="/">← Back to all instances</a>
+<h1 id="instance-name">Loading...</h1>
+<div id="status-badge"></div>
+
+<div class="section">
+    <h2>Configuration</h2>
+    <label>Name <input id="name" type="text"/></label>
+    <label>Port <input id="port" type="number" min="1024" max="65535"/></label>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="saveConfig()">Save Changes</button>
+</div>
+
+<div class="section">
+    <h2>Options</h2>
+    <div id="options-list"></div>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="addOption()">+ Add Option</button>
+    <button class="btn btn-primary" style="margin-top:8px;" onclick="saveConfig()">Save Options</button>
+</div>
+
+<div class="section">
+    <h2>Controls</h2>
+    <button class="btn btn-success" onclick="doAction('start')">Start</button>
+    <button class="btn btn-secondary" onclick="doAction('stop')">Stop</button>
+    <button class="btn btn-warning" onclick="doAction('restart')">Restart</button>
+    <button class="btn btn-danger" onclick="doDelete()">Delete</button>
+</div>
+
+<div class="section">
+    <h2>Mappings</h2>
+    <div>
+        <label>Upload Mappings JSON</label>
+        <input type="file" id="mappings-file" accept=".json"/>
+        <div style="margin-top:8px;">
+            <label><input type="radio" name="upload-mode" value="import" checked/> Import (add to existing)</label>
+            <label><input type="radio" name="upload-mode" value="replace"/> Replace All</label>
+        </div>
+        <button class="btn btn-primary" style="margin-top:8px;" onclick="uploadMappings()">Upload Mappings</button>
+    </div>
+    <div style="margin-top:12px;" id="mappings-links"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+    const OPTION_KEYS = [
+      'asyncResponseEnabled',
+      'asyncResponseThreads',
+      'bindAddress',
+      'caKeystorePassword',
+      'caKeystorePath',
+      'caKeystoreType',
+      'containerThreads',
+      'disableGzip',
+      'enableBrowserProxying',
+      'globalResponseTemplating',
+      'http2PlainDisabled',
+      'http2TlsDisabled',
+      'httpsPort',
+      'jettyAcceptorThreads',
+      'jettyAcceptQueueSize',
+      'keyManagerPassword',
+      'keystorePassword',
+      'keystorePath',
+      'keystoreType',
+      'maxHttpClientConnections',
+      'maxLoggedResponseSize',
+      'maxRequestJournalEntries',
+      'maxTemplateCacheEntries',
+      'needClientAuth',
+      'noRequestJournal',
+      'preserveHostHeader',
+      'proxyHostHeader',
+      'proxyTimeout',
+      'rootDir',
+      'stubCorsEnabled',
+      'trustStorePassword',
+      'trustStorePath',
+      'webhookThreadPoolSize',
+    ];
+
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+    let instance = null;
+    let refreshInterval;
+
+    if (!id) { document.body.innerHTML = '<p>No instance ID specified.</p>'; }
+
+    async function loadInstance() {
+      try {
+        instance = await fetchJson(`/api/instances/${id}`);
+        document.getElementById('instance-name').textContent = instance.name;
+        document.getElementById('status-badge').innerHTML = statusBadge(instance.status);
+        document.getElementById('name').value = instance.name;
+        document.getElementById('port').value = instance.port;
+        renderOptions(instance.options || []);
+        renderMappingsLinks(instance.port, instance.status);
+      } catch (e) {
+        showToast('Failed to load instance: ' + e.message, 'error');
+      }
+    }
+
+    function renderOptions(options) {
+      const list = document.getElementById('options-list');
+      list.innerHTML = options.map((o, i) => `
+        <div class="option-row" id="opt-${i}">
+          <select onchange="opts[${i}].key=this.value">
+            ${OPTION_KEYS.map(k => `<option value="${k}"${k===o.key?' selected':''}>${k}</option>`).join('')}
+          </select>
+          <input type="text" value="${escHtml(o.value)}" onchange="opts[${i}].value=this.value"/>
+          <button class="btn btn-danger" onclick="removeOption(${i})">✕</button>
+        </div>`).join('');
+      window.opts = options.map(o => ({...o}));
+    }
+
+    function addOption() {
+      if (!window.opts) window.opts = [];
+      window.opts.push({ key: OPTION_KEYS[0], value: '' });
+      renderOptions(window.opts);
+    }
+
+    function removeOption(i) {
+      window.opts.splice(i, 1);
+      renderOptions(window.opts);
+    }
+
+    function renderMappingsLinks(port, status) {
+      const div = document.getElementById('mappings-links');
+      if (status === 'RUNNING') {
+        const base = `${location.protocol}//${location.hostname}:${port}`;
+        div.innerHTML = `
+          <a href="${base}/__admin/mappings" target="_blank">View Current Mappings</a> |
+          <a href="${base}/__admin/mappings/unmatched" target="_blank">View Unmatched</a> |
+          <a href="${base}/__admin/requests" target="_blank">View Requests</a>`;
+      } else {
+        div.innerHTML = '<em>Start the instance to view mappings.</em>';
+      }
+    }
+
+    async function saveConfig() {
+      const name = document.getElementById('name').value.trim();
+      const port = parseInt(document.getElementById('port').value);
+      if (!name || !port) { showToast('Name and port required', 'error'); return; }
+      try {
+        instance = await fetchJson(`/api/instances/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...instance, name, port, options: window.opts || [] })
+        });
+        showToast('Saved');
+        loadInstance();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    async function doAction(action) {
+      try {
+        await fetchJson(`/api/instances/${id}/${action}`, { method: 'POST' });
+        const past = action === 'start' ? 'started' : action === 'stop' ? 'stopped' : `${action}`;
+        showToast(`Instance ${past}`);
+        loadInstance();
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    async function doDelete() {
+      if (!confirm('Delete this instance permanently?')) return;
+      try {
+        await fetchJson(`/api/instances/${id}`, { method: 'DELETE' });
+        showToast('Deleted');
+        setTimeout(() => location.href = '/', 1000);
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    async function uploadMappings() {
+      const file = document.getElementById('mappings-file').files[0];
+      if (!file) { showToast('Select a JSON file first', 'error'); return; }
+      const mode = document.querySelector('input[name="upload-mode"]:checked').value;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch(`/api/instances/${id}/mappings?mode=${mode}`, {
+          method: 'POST', body: formData
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error);
+        }
+        showToast('Mappings uploaded');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function refreshStatus() {
+      try {
+        const data = await fetchJson(`/api/instances/${id}`);
+        instance = { ...instance, status: data.status };
+        document.getElementById('status-badge').innerHTML = statusBadge(data.status);
+        renderMappingsLinks(data.port, data.status);
+      } catch (_) {}
+    }
+
+    loadInstance();
+    refreshInterval = setInterval(refreshStatus, 5000);
+    fetchJson('/api/instances/version').then(d => {
+      document.getElementById('app-footer').textContent = 'v' + d.version;
+    }).catch(() => {});
+</script>
+<footer id="app-footer"></footer>
+</body>
+</html>

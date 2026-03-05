@@ -1,0 +1,19 @@
+FROM eclipse-temurin:25-jre-alpine
+
+WORKDIR /app
+
+RUN addgroup -S app && adduser -S app -G app
+
+COPY build/libs/*.jar app.jar
+
+RUN mkdir -p /app/wiremock-data && chown -R app:app /app
+
+USER app
+
+ENV SPRING_PROFILES_ACTIVE=docker
+ENV WIREMOCK_INSTANCE_MANAGER_DATA_DIR=/app/wiremock-data
+ENV WIREMOCK_INSTANCE_MANAGER_CONFIG_FILE=/app/wiremock-data/wiremock-instances.json
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

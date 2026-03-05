@@ -1,0 +1,8 @@
+.gradle/
+build/
+!build/libs/
+.git/
+*.md
+doc/
+out/
+.idea/

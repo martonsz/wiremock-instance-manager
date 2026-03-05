@@ -1,0 +1,17 @@
+services:
+  wiremock-manager:
+    build:
+      context: .
+    image: martonsz/wiremock-instance-manager:${APP_VERSION:-0.0.1}
+    ports:
+      - "8080:8080"
+      - "9090:9090" # Port for a wiremock instance
+    volumes:
+      - wiremock-data:/app/wiremock-data
+    environment:
+      WIREMOCK_INSTANCE_MANAGER_DATA_DIR: /app/wiremock-data
+      WIREMOCK_INSTANCE_MANAGER_CONFIG_FILE: /app/wiremock-data/wiremock-instances.json
+    restart: unless-stopped
+
+volumes:
+  wiremock-data:

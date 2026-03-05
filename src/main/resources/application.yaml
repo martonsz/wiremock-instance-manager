@@ -1,0 +1,17 @@
+app:
+  version: '@project.version@'
+
+spring:
+  application:
+    name: wiremock_instance_manager
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: ${WIREMOCK_INSTANCE_MANAGER_PORT:8080}
+
+wiremock-manager:
+  data-dir: ${WIREMOCK_INSTANCE_MANAGER_DATA_DIR:./wiremock-data}
+  config-file: ${WIREMOCK_INSTANCE_MANAGER_CONFIG_FILE:./wiremock-data/wiremock-instances.json}
